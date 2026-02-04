@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализатор компетенций</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Анализатор компетенций</h1>
+            <p class="subtitle">Управление сотрудниками и компетенциями</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="employees">Сотрудники</button>
+            <button class="tab-btn" data-tab="competences">Компетенции</button>
+            <button class="tab-btn" data-tab="matrices">Матрицы</button>
+            <button class="tab-btn" data-tab="assessments">Оценки</button>
+            <button class="tab-btn" data-tab="analysis">Анализ и отчёты</button>
+        </nav>
+
+        <!-- Employees Tab -->
+        <div class="tab-content active" id="employees">
+            <div class="section">
+                <h2>Добавить сотрудника</h2>
+                <form id="empForm" class="form-grid">
+                    <input type="text" id="empName" placeholder="ФИО" required>
+                    <select id="empPositionSelect" required>
+                        <option value="">Выберите должность</option>
+                    </select>
+                    <input type="text" id="empDept" placeholder="Отдел" required>
+                    <input type="email" id="empEmail" placeholder="Email" required>
+                    <button type="submit" class="btn-primary">Добавить</button>
+                </form>
+            </div>
+
+            <div class="section">
+                <h2>Быстрое добавление сотрудника с компетенциями</h2>
+                <form id="bulkForm" class="form-grid">
+                    <div class="form-column">
+                        <h3>Информация о сотруднике:</h3>
+                        <input type="text" id="bulkEmpName" placeholder="ФИО" required>
+                        <select id="bulkEmpPosition" required>
+                            <option value="">Выберите должность</option>
+                        </select>
+                        <input type="text" id="bulkEmpDept" placeholder="Отдел" required>
+                        <input type="email" id="bulkEmpEmail" placeholder="Email" required>
+                    </div>
+                    <div class="form-column">
+                        <div id="bulkCompetences"></div>
+                        <button type="submit" class="btn-primary">Добавить сотрудника и компетенции</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="section">
+                <h2>Сотрудники</h2>
+                <table id="empTable" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ФИО</th>
+                            <th>Должность</th>
+                            <th>Отдел</th>
+                            <th>Email</th>
+                            <th>Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Competences Tab -->
+        <div class="tab-content" id="competences">
+            <div class="section">
+                <h2>Добавить компетенцию</h2>
+                <form id="compForm" class="form-grid">
+                    <input type="text" id="compName" placeholder="Название компетенции" required>
+                    <textarea id="compDesc" placeholder="Описание" rows="3" required></textarea>
+                    <button type="submit" class="btn-primary">Добавить</button>
+                </form>
+            </div>
+
+            <div class="section">
+                <h2>Компетенции</h2>
+                <table id="compTable" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Описание</th>
+                            <th>Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Matrices Tab -->
+        <div class="tab-content" id="matrices">
+            <div class="section">
+                <h2>Добавить матрицу</h2>
+                <form id="matrixForm" class="form-grid">
+                    <input type="text" id="matrixName" placeholder="Название матрицы" required>
+                    <textarea id="matrixDesc" placeholder="Описание" rows="2"></textarea>
+                    <button type="submit" class="btn-primary">Добавить матрицу</button>
+                </form>
+            </div>
+
+            <div class="section">
+                <h2>Матрицы</h2>
+                <table id="matrixTable" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Должности</th>
+                            <th>Описание</th>
+                            <th>Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="section" id="matrixDetailsSection" style="display:none;">
+                <h2>Детали матрицы: <span id="matrixTitle"></span></h2>
+                <div id="matrixCompetencesContainer"></div>
+                <h3>Добавить компетенцию в матрицу</h3>
+                <form id="matrixCompForm" class="form-grid">
+                    <select id="matrixCompSelect" required>
+                        <option value="">Выберите компетенцию</option>
+                    </select>
+                    <input type="number" id="matrixCompLevel" min="1" max="5" placeholder="Требуемый уровень (1-5)" required>
+                    <button type="submit" class="btn-primary">Добавить</button>
+                </form>
+
+                <h3>Должности, связанные с матрицей</h3>
+                <div id="matrixPositionsContainer"></div>
+                <form id="matrixPositionForm" class="form-grid">
+                    <input type="text" id="matrixPositionName" placeholder="Название должности (например, Pentester)" required>
+                    <button type="submit" class="btn-primary">Добавить должность</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Assessments Tab -->
+        <div class="tab-content" id="assessments">
+            <div class="section">
+                <h2>Добавить оценку</h2>
+                <form id="assForm" class="form-grid">
+                    <select id="assEmp" required>
+                        <option value="">Выберите сотрудника</option>
+                    </select>
+                    <select id="assComp" required>
+                        <option value="">Выберите компетенцию</option>
+                    </select>
+                    <input type="number" id="assLevel" min="1" max="5" placeholder="Уровень (1-5)" required>
+                    <textarea id="assComments" placeholder="Комментарии" rows="2"></textarea>
+                    <button type="submit" class="btn-primary">Добавить оценку</button>
+                </form>
+            </div>
+
+            <div class="section">
+                <h2>Оценки</h2>
+                <div class="filter-controls">
+                    <div class="filter-group">
+                        <label>Сотрудник:</label>
+                        <select id="filterEmployee" onchange="setFilter('employee', this.value)">
+                            <option value="">Все сотрудники</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Должность:</label>
+                        <select id="filterPosition" onchange="setFilter('position', this.value)">
+                            <option value="">Все должности</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Компетенция:</label>
+                        <select id="filterCompetence" onchange="setFilter('competence', this.value)">
+                            <option value="">Все компетенции</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Уровень:</label>
+                        <select id="filterLevel" onchange="setFilter('level', this.value)">
+                            <option value="">Все уровни</option>
+                            <option value="1">1 - Новичок</option>
+                            <option value="2">2 - Начинающий</option>
+                            <option value="3">3 - Опытный</option>
+                            <option value="4">4 - Эксперт</option>
+                            <option value="5">5 - Мастер</option>
+                        </select>
+                    </div>
+                    <button class="btn-secondary" onclick="clearAllFilters()">Очистить фильтры</button>
+                </div>
+                <div class="sort-controls">
+                    <p>Сортировка:</p>
+                    <button class="sort-btn active" data-sort="name" onclick="sortAssessments('name')">По сотруднику</button>
+                    <button class="sort-btn" data-sort="competence" onclick="sortAssessments('competence')">По компетенции</button>
+                    <button class="sort-btn" data-sort="position" onclick="sortAssessments('position')">По должности</button>
+                    <button class="sort-btn" data-sort="level" onclick="sortAssessments('level')">По уровню (↓)</button>
+                </div>
+                <table id="assTable" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Сотрудник</th>
+                            <th>Должность</th>
+                            <th>Компетенция</th>
+                            <th>Уровень</th>
+                            <th>Комментарии</th>
+                            <th>Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Analysis Tab -->
+        <div class="tab-content" id="analysis">
+            <div class="section">
+                <h2>Анализ и отчёты</h2>
+                <div class="form-grid">
+                    <select id="analysisEmployee">
+                        <option value="">Выберите сотрудника</option>
+                    </select>
+                    <button class="btn-primary" onclick="runAnalysisForSelected()">Запустить анализ</button>
+                    <button class="btn-secondary" onclick="generateReportForSelected()">Сформировать отчёт</button>
+                </div>
+
+                <div id="analysisResult" class="section">
+                    <!-- Analysis results will be rendered here -->
+                </div>
+
+                <div class="section">
+                    <h3>Текст отчёта</h3>
+                    <pre id="reportOutput" class="report-output"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

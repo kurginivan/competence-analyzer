@@ -1,0 +1,41 @@
+FROM ubuntu:22.04 as builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    postgresql-client-14 \
+    libpq-dev \
+    libpqxx-dev \
+    pkg-config \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy source
+COPY . /app/
+
+# Build
+RUN mkdir -p /app/build && \
+    cd /app/build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    make -j$(nproc)
+
+# Runtime stage
+FROM ubuntu:22.04
+
+WORKDIR /app
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client-14 \
+    libpq5 \
+    libpqxx6 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy compiled binary from builder
+COPY --from=builder /app/build/competence-analyzer /app/competence-analyzer
+
+ENTRYPOINT ["/app/competence-analyzer"]
