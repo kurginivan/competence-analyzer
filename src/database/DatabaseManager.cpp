@@ -566,6 +566,159 @@ std::vector<Models::Assessment> DatabaseManager::getLatestAssessments(int employ
     return assessments;
 }
 
+// ==================== Position Operations ====================
+
+int DatabaseManager::addPosition(const Models::Position& position) {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    try {
+        pqxx::work txn(*connection);
+        if (position.getMatrixId() != -1) {
+            auto result = txn.exec_params(
+                "INSERT INTO positions (name, matrix_id) "
+                "VALUES ($1, $2) RETURNING id",
+                position.getName(),
+                position.getMatrixId()
+            );
+            txn.commit();
+            return result[0]["id"].as<int>();
+        } else {
+            auto result = txn.exec_params(
+                "INSERT INTO positions (name, matrix_id) "
+                "VALUES ($1, NULL) RETURNING id",
+                position.getName()
+            );
+            txn.commit();
+            return result[0]["id"].as<int>();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при добавлении должности: " << e.what() << "\n";
+        throw;
+    }
+}
+
+Models::Position DatabaseManager::getPosition(int id) {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    try {
+        pqxx::work txn(*connection);
+        auto result = txn.exec_params(
+            "SELECT id, name, matrix_id, created_at, updated_at "
+            "FROM positions WHERE id = $1",
+            id
+        );
+        if (result.empty()) {
+            throw std::runtime_error("Должность не найдена");
+        }
+        return parsePositionRow(result[0]);
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при получении должности: " << e.what() << "\n";
+        throw;
+    }
+}
+
+Models::Position DatabaseManager::getPositionByName(const std::string& name) {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    try {
+        pqxx::work txn(*connection);
+        auto result = txn.exec_params(
+            "SELECT id, name, matrix_id, created_at, updated_at "
+            "FROM positions WHERE name = $1",
+            name
+        );
+        if (result.empty()) {
+            throw std::runtime_error("Должность не найдена");
+        }
+        return parsePositionRow(result[0]);
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при получении должности: " << e.what() << "\n";
+        throw;
+    }
+}
+
+std::vector<Models::Position> DatabaseManager::getAllPositions() {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    std::vector<Models::Position> positions;
+    try {
+        pqxx::work txn(*connection);
+        auto result = txn.exec(
+            "SELECT id, name, matrix_id, created_at, updated_at "
+            "FROM positions ORDER BY id"
+        );
+        for (auto row : result) {
+            positions.push_back(parsePositionRow(row));
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при получении должностей: " << e.what() << "\n";
+        throw;
+    }
+    return positions;
+}
+
+std::vector<Models::Position> DatabaseManager::getPositionsByMatrix(int matrixId) {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    std::vector<Models::Position> positions;
+    try {
+        pqxx::work txn(*connection);
+        auto result = txn.exec_params(
+            "SELECT id, name, matrix_id, created_at, updated_at "
+            "FROM positions WHERE matrix_id = $1 ORDER BY id",
+            matrixId
+        );
+        for (auto row : result) {
+            positions.push_back(parsePositionRow(row));
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при получении должностей матрицы: " << e.what() << "\n";
+        throw;
+    }
+    return positions;
+}
+
+bool DatabaseManager::updatePosition(const Models::Position& position) {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    try {
+        pqxx::work txn(*connection);
+        if (position.getMatrixId() != -1) {
+            txn.exec_params(
+                "UPDATE positions SET name = $1, matrix_id = $2 WHERE id = $3",
+                position.getName(),
+                position.getMatrixId(),
+                position.getId()
+            );
+        } else {
+            txn.exec_params(
+                "UPDATE positions SET name = $1, matrix_id = NULL WHERE id = $2",
+                position.getName(),
+                position.getId()
+            );
+        }
+        txn.commit();
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при обновлении должности: " << e.what() << "\n";
+        throw;
+    }
+}
+
+bool DatabaseManager::deletePosition(int id) {
+    if (!isConnected()) throw std::runtime_error("Database not connected");
+
+    try {
+        pqxx::work txn(*connection);
+        txn.exec_params("DELETE FROM positions WHERE id = $1", id);
+        txn.commit();
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Ошибка при удалении должности: " << e.what() << "\n";
+        throw;
+    }
+}
+
 // ==================== Helper Methods ====================
 
 Models::Employee DatabaseManager::parseEmployeeRow(const pqxx::row& row) {
@@ -587,6 +740,19 @@ Models::Competence DatabaseManager::parseCompetenceRow(const pqxx::row& row) {
         row["category"].as<std::string>()
     );
     return comp;
+}
+
+Models::Position DatabaseManager::parsePositionRow(const pqxx::row& row) {
+    int matrixId = -1;
+    if (!row["matrix_id"].is_null()) {
+        matrixId = row["matrix_id"].as<int>();
+    }
+    Models::Position pos(
+        row["id"].as<int>(),
+        row["name"].as<std::string>(),
+        matrixId
+    );
+    return pos;
 }
 
 Models::Matrix DatabaseManager::parseMatrixRow(const pqxx::row& row) {

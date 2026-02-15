@@ -43,10 +43,10 @@ std::string ReportGenerator::levelToString(int level) {
 }
 
 std::string ReportGenerator::complianceToString(double percentage) {
-    if (percentage >= 100.0) return "✓ Полностью соответствует";
-    if (percentage >= 80.0) return "◐ В основном соответствует";
-    if (percentage >= 50.0) return "◑ Частично соответствует";
-    return "✗ Не соответствует";
+    if (percentage >= 100.0) return "Полностью соответствует";
+    if (percentage >= 80.0) return "В основном соответствует";
+    if (percentage >= 50.0) return "Частично соответствует";
+    return "Не соответствует";
 }
 
 void ReportGenerator::printEmployeeComplianceReport(const ComplianceReport& report) {

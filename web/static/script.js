@@ -583,6 +583,14 @@ async function refreshMatrixDetails() {
         } else {
             posContainer.innerHTML = '<ul class="list-normal">' + myPositions.map(p => `<li>${p.name} <button class="btn-danger" onclick="deletePosition(${p.id})">Удалить</button></li>`).join('') + '</ul>';
         }
+        
+        // Populate select with unlinked positions
+        const unlinkedPositions = positions.filter(p => p.matrix_id !== currentMatrixId);
+        const posSelect = document.getElementById('matrixExistingPositionSelect');
+        posSelect.innerHTML = '<option value="">Выберите должность</option>';
+        unlinkedPositions.forEach(p => { 
+            posSelect.innerHTML += `<option value="${p.id}">${p.name}</option>`; 
+        });
     } catch (err) { console.error('Error refreshing matrix details:', err); }
 }
 
@@ -608,9 +616,31 @@ document.getElementById('matrixPositionForm')?.addEventListener('submit', async 
     if (!name) return showNotification('Введите название должности', 'error');
     try {
         const res = await fetch(`${API_BASE}/positions`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, matrix_id: currentMatrixId })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, matrix_id: parseInt(currentMatrixId) })
         });
         if (res.ok) { showNotification('Должность добавлена'); document.getElementById('matrixPositionForm').reset(); refreshMatrixDetails(); loadSelectOptions(); }
+    } catch (err) { showNotification(`Ошибка: ${err.message}`, 'error'); }
+});
+
+document.getElementById('matrixLinkPositionForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentMatrixId) return showNotification('Выберите матрицу', 'error');
+    const posId = parseInt(document.getElementById('matrixExistingPositionSelect').value);
+    if (!posId) return showNotification('Выберите должность', 'error');
+    try {
+        // Get current position data
+        const posRes = await fetch(`${API_BASE}/positions`);
+        const allPositions = await posRes.json();
+        const pos = allPositions.find(p => p.id === posId);
+        if (!pos) return showNotification('Должность не найдена', 'error');
+        
+        // Update position with new matrix_id
+        const res = await fetch(`${API_BASE}/positions/${posId}`, {
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ name: pos.name, matrix_id: parseInt(currentMatrixId) })
+        });
+        if (res.ok) { showNotification('Должность связана с матрицей'); document.getElementById('matrixLinkPositionForm').reset(); refreshMatrixDetails(); loadSelectOptions(); }
     } catch (err) { showNotification(`Ошибка: ${err.message}`, 'error'); }
 });
 
@@ -642,11 +672,66 @@ async function loadAnalysisSelects() {
     } catch (err) { console.error('Error loading analysis selects:', err); }
 }
 
+// When employee is selected, load available matrices
+document.getElementById('analysisEmployee')?.addEventListener('change', async (e) => {
+    const empId = parseInt(e.target.value);
+    const matrixSelect = document.getElementById('analysisMatrix');
+    const runBtn = document.getElementById('analysisRunBtn');
+    const reportBtn = document.getElementById('analysisReportBtn');
+    
+    if (!empId) {
+        matrixSelect.style.display = 'none';
+        runBtn.style.display = 'none';
+        reportBtn.style.display = 'none';
+        return;
+    }
+    
+    try {
+        const res = await fetch(`${API_BASE}/employees/${empId}/available-matrices`);
+        if (!res.ok) throw new Error('Failed to load matrices');
+        const data = await res.json();
+        const matrices = data.matrices || [];
+        
+        matrixSelect.innerHTML = '<option value="">Выберите матрицу для анализа</option>';
+        matrices.forEach(m => {
+            matrixSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+        });
+        
+        if (matrices.length > 0) {
+            matrixSelect.style.display = 'block';
+            runBtn.style.display = 'block';
+            reportBtn.style.display = 'block';
+            // Auto-select if only one matrix
+            if (matrices.length === 1) {
+                matrixSelect.value = matrices[0].id;
+            }
+        } else {
+            showNotification('Для этого сотрудника нет доступных матриц', 'warning');
+            matrixSelect.style.display = 'none';
+            runBtn.style.display = 'none';
+            reportBtn.style.display = 'none';
+        }
+    } catch (err) { 
+        showNotification(`Ошибка: ${err.message}`, 'error'); 
+        matrixSelect.style.display = 'none';
+        runBtn.style.display = 'none';
+        reportBtn.style.display = 'none';
+    }
+});
+
 async function runAnalysisForSelected() {
     const empId = parseInt(document.getElementById('analysisEmployee').value);
+    const matrixId = parseInt(document.getElementById('analysisMatrix').value);
+    
     if (!empId) return showNotification('Выберите сотрудника', 'error');
+    if (!matrixId) return showNotification('Выберите матрицу', 'error');
+    
     try {
-        const res = await fetch(`${API_BASE}/analysis/employee/${empId}`);
+        const res = await fetch(`${API_BASE}/employees/${empId}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matrix_id: matrixId })
+        });
         if (!res.ok) throw new Error('Analysis failed');
         const data = await res.json();
         renderAnalysisResult(data);
@@ -658,9 +743,23 @@ function renderAnalysisResult(data) {
     const lines = [];
     const posName = data.employee.position_name || 'Не указана';
     lines.push(`<h3>${data.employee.name} — ${posName} (${data.employee.department})</h3>`);
-    if (data.position_match_percentage !== null && data.position_match_percentage !== undefined) {
-        lines.push(`<p>Соответствие должности: <strong>${data.position_match_percentage}%</strong></p>`);
+    
+    // Show match percentage for the selected matrix
+    const matchPct = data.match_percentage !== null && data.match_percentage !== undefined ? data.match_percentage : data.position_match_percentage;
+    if (matchPct !== null && matchPct !== undefined) {
+        lines.push(`<p>Соответствие матрице: <strong>${matchPct}%</strong></p>`);
     }
+    
+    // Show unmet competencies if any
+    if (data.unmet_competencies && data.unmet_competencies.length > 0) {
+        lines.push('<h4>Требования матрицы, не соответствующие текущему уровню:</h4>');
+        lines.push('<ul>');
+        data.unmet_competencies.forEach(uc => {
+            lines.push(`<li>${uc.competence_name}: требуется ${uc.required_level}/5, имеется ${uc.actual_level}/5</li>`);
+        });
+        lines.push('</ul>');
+    }
+    
     lines.push('<h4>Средние уровни по компетенциям:</h4>');
     if (!data.averages.length) {
         lines.push('<p class="empty-message">Нет данных об оценках</p>');
@@ -678,9 +777,11 @@ function renderAnalysisResult(data) {
 
 async function generateReportForSelected() {
     const empId = parseInt(document.getElementById('analysisEmployee').value);
+    const matrixId = parseInt(document.getElementById('analysisMatrix').value);
     if (!empId) return showNotification('Выберите сотрудника', 'error');
+    if (!matrixId) return showNotification('Выберите матрицу', 'error');
     try {
-        const res = await fetch(`${API_BASE}/reports/employee/${empId}`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/reports/employee/${empId}?matrix_id=${matrixId}`, { method: 'POST' });
         if (!res.ok) throw new Error('Report generation failed');
         const j = await res.json();
         const reportContainer = document.getElementById('reportOutput');

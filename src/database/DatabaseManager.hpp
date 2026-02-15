@@ -8,6 +8,7 @@
 #include "../models/Competence.hpp"
 #include "../models/Matrix.hpp"
 #include "../models/Assessment.hpp"
+#include "../models/Position.hpp"
 
 namespace Database {
 
@@ -35,6 +36,15 @@ public:
     std::vector<Models::Competence> getCompetencesByCategory(const std::string& category);
     bool updateCompetence(const Models::Competence& competence);
     bool deleteCompetence(int id);
+
+    // Position operations
+    int addPosition(const Models::Position& position);
+    Models::Position getPosition(int id);
+    Models::Position getPositionByName(const std::string& name);
+    std::vector<Models::Position> getAllPositions();
+    bool updatePosition(const Models::Position& position);
+    bool deletePosition(int id);
+    std::vector<Models::Position> getPositionsByMatrix(int matrixId);
 
     // Matrix operations
     int addMatrix(const Models::Matrix& matrix);
@@ -67,6 +77,7 @@ private:
     // Helper methods for parsing results
     Models::Employee parseEmployeeRow(const pqxx::row& row);
     Models::Competence parseCompetenceRow(const pqxx::row& row);
+    Models::Position parsePositionRow(const pqxx::row& row);
     Models::Matrix parseMatrixRow(const pqxx::row& row);
     Models::Assessment parseAssessmentRow(const pqxx::row& row);
 };

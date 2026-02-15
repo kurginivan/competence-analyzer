@@ -378,8 +378,51 @@ void ConsoleUI::addMatrix() {
 
     try {
         Models::Matrix matrix(0, name, description);
-        int id = db->addMatrix(matrix);
-        std::cout << "\n✓ Матрица успешно добавлена! ID: " << id << "\n";
+        int matrixId = db->addMatrix(matrix);
+        std::cout << "\n✓ Матрица успешно добавлена! ID: " << matrixId << "\n";
+
+        // Предложить связать должности с матрицей
+        std::cout << "\nХотите связать должности с этой матрицей?\n";
+        std::cout << "1. Добавить новую должность для этой матрицы\n";
+        std::cout << "2. Связать существующую должность с матрицей\n";
+        std::cout << "3. Пропустить\n";
+        int choice = getChoiceInput(1, 3);
+
+        if (choice == 1) {
+            // Создать новую должность
+            std::string positionName = getStringInput("Название должности: ");
+            Models::Position position(0, positionName, matrixId);
+            int positionId = db->addPosition(position);
+            std::cout << "\n✓ Должность успешно создана и связана с матрицей! ID должности: " << positionId << "\n";
+        } else if (choice == 2) {
+            // Показать существующие должности
+            auto positions = db->getAllPositions();
+            if (positions.empty()) {
+                std::cout << "\nЭкземпляры должности отсутствуют.\n";
+            } else {
+                std::cout << "\n=== Существующие должности ===\n";
+                std::cout << std::string(60, '-') << "\n";
+                std::cout << std::left << std::setw(10) << "ID"
+                          << std::setw(30) << "Название"
+                          << std::setw(20) << "Текущая матрица\n";
+                std::cout << std::string(60, '-') << "\n";
+
+                for (const auto& pos : positions) {
+                    std::string matrixInfo = (pos.getMatrixId() == -1) ? "не указана" : std::to_string(pos.getMatrixId());
+                    std::cout << std::left << std::setw(10) << pos.getId()
+                              << std::setw(30) << pos.getName()
+                              << std::setw(20) << matrixInfo << "\n";
+                }
+                std::cout << std::string(60, '-') << "\n";
+
+                int positionId = getIntInput("ID должности для связи: ");
+                Models::Position position = db->getPosition(positionId);
+                position.setMatrixId(matrixId);
+                if (db->updatePosition(position)) {
+                    std::cout << "\n✓ Должность успешно связана с матрицей!\n";
+                }
+            }
+        }
     } catch (const std::exception& e) {
         std::cerr << "\n✗ Ошибка: " << e.what() << "\n";
     }
@@ -667,9 +710,61 @@ void ConsoleUI::displayAnalysisMenu() {
 
 void ConsoleUI::analyzeEmployeeCompliance() {
     int employeeId = getIntInput("\nВведите ID сотрудника: ");
-    int matrixId = getIntInput("Введите ID матрицы: ");
 
     try {
+        auto employee = db->getEmployee(employeeId);
+        
+        // Получить все матрицы и получить те, которые соответствуют должности сотрудника
+        auto allMatrices = db->getAllMatrices();
+        std::vector<std::pair<int, std::string>> matchingMatrices; // ID матрицы и имя
+        
+        // Если у сотрудника есть должность, найти матрицы для этой должности
+        std::string employeePosition = employee.getPosition();
+        for (const auto& matrix : allMatrices) {
+            auto positionsForMatrix = db->getPositionsByMatrix(matrix.getId());
+            for (const auto& pos : positionsForMatrix) {
+                if (pos.getName() == employeePosition) {
+                    matchingMatrices.emplace_back(matrix.getId(), matrix.getName());
+                    break;
+                }
+            }
+        }
+
+        int matrixId = -1;
+
+        if (matchingMatrices.empty()) {
+            // Показать все матрицы для выбора
+            std::cout << "\nДля должности \"" << employeePosition << "\" соответствующие матрицы не найдены.\n";
+            std::cout << "Выберите матрицу для анализа из доступных:\n";
+            std::cout << std::string(60, '-') << "\n";
+            std::cout << std::left << std::setw(10) << "ID" << std::setw(50) << "Название\n";
+            std::cout << std::string(60, '-') << "\n";
+
+            for (const auto& matrix : allMatrices) {
+                std::cout << std::left << std::setw(10) << matrix.getId()
+                          << std::setw(50) << matrix.getName() << "\n";
+            }
+            std::cout << std::string(60, '-') << "\n";
+            matrixId = getIntInput("ID матрицы: ");
+        } else if (matchingMatrices.size() == 1) {
+            // Одна соответствующая матрица, используем её
+            matrixId = matchingMatrices[0].first;
+            std::cout << "\n✓ Найдена матрица для должности \"" << employeePosition << "\": " 
+                      << matchingMatrices[0].second << " (ID: " << matrixId << ")\n";
+        } else {
+            // Несколько соответствующих матриц, предложить выбор
+            std::cout << "\nДля должности \"" << employeePosition << "\" найдено несколько матриц:\n";
+            std::cout << std::string(60, '-') << "\n";
+            for (size_t i = 0; i < matchingMatrices.size(); ++i) {
+                std::cout << (i + 1) << ". " << matchingMatrices[i].second 
+                          << " (ID: " << matchingMatrices[i].first << ")\n";
+            }
+            std::cout << std::string(60, '-') << "\n";
+            
+            int choice = getChoiceInput(1, static_cast<int>(matchingMatrices.size()));
+            matrixId = matchingMatrices[choice - 1].first;
+        }
+
         reportGenerator->printDetailedComplianceAnalysis(employeeId, matrixId);
     } catch (const std::exception& e) {
         std::cerr << "✗ Ошибка: " << e.what() << "\n";

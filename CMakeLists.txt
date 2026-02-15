@@ -9,7 +9,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(PQXX REQUIRED libpqxx)
+pkg_check_modules(PQXX REQUIRED libpqxx libpq)
 pkg_check_modules(PQ REQUIRED libpq)
 
 # PostgreSQL
@@ -50,6 +50,7 @@ set(SOURCES
     src/database/DatabaseManager.cpp
     src/models/Employee.cpp
     src/models/Competence.cpp
+    src/models/Position.cpp
     src/models/Matrix.cpp
     src/models/Assessment.cpp
     src/services/AnalysisEngine.cpp
@@ -66,6 +67,7 @@ set(QT_SOURCES
     src/database/DatabaseManager.cpp
     src/models/Employee.cpp
     src/models/Competence.cpp
+    src/models/Position.cpp
     src/models/Matrix.cpp
     src/models/Assessment.cpp
     src/services/AnalysisEngine.cpp
@@ -79,15 +81,15 @@ add_executable(competence-analyzer ${SOURCES})
 # Link libraries for console version
 target_link_libraries(competence-analyzer
     PRIVATE
-    ${PQXX_LIBRARIES}
-    ${PQ_LIBRARIES}
-    ${PostgreSQL_LIBRARIES}
+    pqxx
+    pq
     stdc++
 )
 
 # Add compile options and include directories
 target_include_directories(competence-analyzer PRIVATE ${PQXX_INCLUDE_DIRS} ${PQ_INCLUDE_DIRS})
 target_compile_options(competence-analyzer PRIVATE ${PQXX_CFLAGS_OTHER} ${PQ_CFLAGS_OTHER})
+target_link_directories(competence-analyzer PRIVATE ${PQXX_LIBRARY_DIRS} ${PQ_LIBRARY_DIRS})
 
 # Create install targets
 install(TARGETS competence-analyzer DESTINATION bin)

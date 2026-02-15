@@ -138,9 +138,19 @@
 
                 <h3>Должности, связанные с матрицей</h3>
                 <div id="matrixPositionsContainer"></div>
+                
+                <h4>Создать новую должность</h4>
                 <form id="matrixPositionForm" class="form-grid">
                     <input type="text" id="matrixPositionName" placeholder="Название должности (например, Pentester)" required>
                     <button type="submit" class="btn-primary">Добавить должность</button>
+                </form>
+                
+                <h4>Связать существующую должность</h4>
+                <form id="matrixLinkPositionForm" class="form-grid">
+                    <select id="matrixExistingPositionSelect" required>
+                        <option value="">Выберите должность</option>
+                    </select>
+                    <button type="submit" class="btn-primary">Связать должность с матрицей</button>
                 </form>
             </div>
         </div>
@@ -227,8 +237,11 @@
                     <select id="analysisEmployee">
                         <option value="">Выберите сотрудника</option>
                     </select>
-                    <button class="btn-primary" onclick="runAnalysisForSelected()">Запустить анализ</button>
-                    <button class="btn-secondary" onclick="generateReportForSelected()">Сформировать отчёт</button>
+                    <select id="analysisMatrix" style="display:none;">
+                        <option value="">Выберите матрицу для анализа</option>
+                    </select>
+                    <button class="btn-primary" id="analysisRunBtn" style="display:none;" onclick="runAnalysisForSelected()">Запустить анализ</button>
+                    <button class="btn-secondary" id="analysisReportBtn" style="display:none;" onclick="generateReportForSelected()">Сформировать отчёт</button>
                 </div>
 
                 <div id="analysisResult" class="section">

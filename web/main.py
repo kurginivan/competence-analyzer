@@ -179,13 +179,64 @@ def get_positions():
 def create_position(pos: Position):
     try:
         conn = get_db()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO positions (name, matrix_id) VALUES (%s, %s) RETURNING id", (pos.name, pos.matrix_id))
-        pos_id = cur.fetchone()[0]
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "INSERT INTO positions (name, matrix_id) VALUES (%s, %s) RETURNING id, name, matrix_id",
+            (pos.name, pos.matrix_id)
+        )
+        pos_record = cur.fetchone()
         conn.commit()
         cur.close()
+        # Fetch with matrix name
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "SELECT p.id, p.name, p.matrix_id, m.name AS matrix_name FROM positions p LEFT JOIN matrices m ON p.matrix_id = m.id WHERE p.id = %s",
+            (pos_record['id'],)
+        )
+        result = cur.fetchone()
+        cur.close()
         conn.close()
-        return {"id": pos_id, **pos.dict()}
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/positions/{pos_id}")
+def update_position(pos_id: int, pos: Position):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE positions SET name=%s, matrix_id=%s WHERE id=%s",
+            (pos.name, pos.matrix_id, pos_id)
+        )
+        conn.commit()
+        # Fetch updated record
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "SELECT p.id, p.name, p.matrix_id, m.name AS matrix_name FROM positions p LEFT JOIN matrices m ON p.matrix_id = m.id WHERE p.id = %s",
+            (pos_id,)
+        )
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/positions/by-matrix/{matrix_id}")
+def get_positions_by_matrix(matrix_id: int):
+    """Get all positions for a specific matrix"""
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "SELECT p.id, p.name, p.matrix_id, m.name AS matrix_name FROM positions p LEFT JOIN matrices m ON p.matrix_id = m.id WHERE p.matrix_id = %s ORDER BY p.name",
+            (matrix_id,)
+        )
+        positions = cur.fetchall()
+        cur.close()
+        conn.close()
+        return positions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -403,37 +454,183 @@ def analyze_employee(emp_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/reports/employee/{emp_id}")
-def generate_employee_report(emp_id: int):
-    analysis = analyze_employee(emp_id)
-    emp = analysis['employee']
-    averages = analysis['averages']
-    gaps = analysis['gaps']
-    recommendations = analysis['recommendations']
-    match = analysis.get('position_match_percentage')
+def generate_employee_report(emp_id: int, matrix_id: Optional[int] = None):
+    try:
+        if matrix_id:
+            # Analyze with specific matrix
+            analysis_response = analyze_with_matrix(emp_id, {'matrix_id': matrix_id})
+            emp = analysis_response['employee']
+            averages = analysis_response['averages']
+            gaps = analysis_response['gaps']
+            recommendations = analysis_response['recommendations']
+            match = analysis_response.get('match_percentage')
+        else:
+            # Analyze with position's matrix or all
+            analysis = analyze_employee(emp_id)
+            emp = analysis['employee']
+            averages = analysis['averages']
+            gaps = analysis['gaps']
+            recommendations = analysis['recommendations']
+            match = analysis.get('position_match_percentage')
 
-    lines = []
-    pos_name = emp.get('position_name') or 'Без должности'
-    lines.append(f"Отчёт по сотруднику: {emp['name']} ({pos_name} - {emp.get('department','')})")
-    if match is not None:
-        lines.append(f"Соответствие должности: {match}%")
-    lines.append("")
-    lines.append("Средние уровни по компетенциям:")
-    for row in averages:
-        lines.append(f"- {row['competence_name']}: {row['avg_level']}/5")
-    lines.append("")
-    lines.append("Пробелы (уровень < 3):")
-    if gaps:
-        for r in gaps:
+        lines = []
+        pos_name = emp.get('position_name') or 'Без должности'
+        lines.append(f"Отчёт по сотруднику: {emp['name']} ({pos_name} - {emp.get('department','')})")
+        if match is not None:
+            lines.append(f"Соответствие матрице: {match}%")
+        lines.append("")
+        lines.append("Средние уровни по компетенциям:")
+        for row in averages:
+            lines.append(f"- {row['competence_name']}: {row['avg_level']}/5")
+        lines.append("")
+        lines.append("Пробелы (уровень < 3):")
+        if gaps:
+            for r in gaps:
+                lines.append(f"- {r['competence_name']}: {r['avg_level']}/5")
+        else:
+            lines.append("- Пробелов не выявлено")
+        lines.append("")
+        lines.append("Рекомендации (топ-5):")
+        for r in recommendations:
             lines.append(f"- {r['competence_name']}: {r['avg_level']}/5")
-    else:
-        lines.append("- Пробелов не выявлено")
-    lines.append("")
-    lines.append("Рекомендации (топ-5):")
-    for r in recommendations:
-        lines.append(f"- {r['competence_name']}: {r['avg_level']}/5")
 
-    report_text = "\n".join(lines)
-    return {"report": report_text}
+        report_text = "\n".join(lines)
+        return {"report": report_text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/employees/{emp_id}/available-matrices")
+def get_available_matrices(emp_id: int):
+    """Get matrices available for employee analysis (based on position match or all if no position)"""
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get employee and their position
+        cur.execute(
+            "SELECT e.id, e.position_id FROM employees e WHERE e.id=%s",
+            (emp_id,)
+        )
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # If employee has a position, find matrices for that position
+        available_matrices = []
+        if emp.get('position_id'):
+            cur.execute(
+                "SELECT DISTINCT m.id, m.name, m.description FROM matrices m "
+                "JOIN positions p ON m.id = p.matrix_id WHERE p.id=%s",
+                (emp['position_id'],)
+            )
+            available_matrices = cur.fetchall()
+        
+        # If no position-specific matrices, return all matrices
+        if not available_matrices:
+            cur.execute(
+                "SELECT id, name, description FROM matrices ORDER BY name"
+            )
+            available_matrices = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        return {
+            "position_id": emp.get('position_id'),
+            "matrices": available_matrices
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/employees/{emp_id}/analyze")
+def analyze_with_matrix(emp_id: int, body: dict):
+    """Analyze employee against specific matrix. Body: {matrix_id: int}"""
+    try:
+        matrix_id = body.get('matrix_id')
+        if not matrix_id:
+            raise HTTPException(status_code=400, detail="matrix_id required")
+        
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get employee info
+        cur.execute(
+            "SELECT e.id, e.name, e.department, e.email, p.id AS position_id, p.name AS position_name "
+            "FROM employees e LEFT JOIN positions p ON e.position_id = p.id WHERE e.id=%s",
+            (emp_id,)
+        )
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Get employee's competency assessments (averages)
+        cur.execute("""
+            SELECT c.id AS competence_id, c.name AS competence_name, ROUND(AVG(a.actual_level)::numeric,2) AS avg_level
+            FROM assessments a
+            JOIN competences c ON a.competence_id = c.id
+            WHERE a.employee_id = %s
+            GROUP BY c.id, c.name
+            ORDER BY avg_level ASC
+        """, (emp_id,))
+        averages = cur.fetchall()
+        
+        # Get matrix requirements
+        cur.execute(
+            "SELECT competence_id, required_level FROM matrix_competencies WHERE matrix_id = %s",
+            (matrix_id,)
+        )
+        requirements = cur.fetchall()
+        
+        # Calculate match
+        match_percentage = None
+        unmet_competencies = []
+        if requirements:
+            total = len(requirements)
+            met = 0
+            avg_map = {int(r['competence_id']): float(r['avg_level']) for r in averages}
+            
+            for req in requirements:
+                cid = int(req['competence_id'])
+                req_level = int(req['required_level'])
+                avg_level = avg_map.get(cid, 0.0)
+                
+                if avg_level >= req_level:
+                    met += 1
+                else:
+                    # Find competence name
+                    comp_name = next((r['competence_name'] for r in averages if int(r['competence_id']) == cid), f"ID:{cid}")
+                    unmet_competencies.append({
+                        "competence_id": cid,
+                        "competence_name": comp_name,
+                        "required_level": req_level,
+                        "actual_level": avg_level
+                    })
+            
+            match_percentage = round((met / total) * 100.0, 2)
+        
+        # Get gaps and recommendations
+        gaps = [row for row in averages if float(row['avg_level']) < 3]
+        recommendations = averages[:5]
+        
+        cur.close()
+        conn.close()
+        
+        return {
+            "employee": emp,
+            "matrix_id": matrix_id,
+            "averages": averages,
+            "gaps": gaps,
+            "recommendations": recommendations,
+            "match_percentage": match_percentage,
+            "unmet_competencies": unmet_competencies
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Routes - Assessments
 @app.get("/api/assessments")
