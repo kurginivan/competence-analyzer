@@ -28,17 +28,13 @@ private:
     // Employee management
     void displayEmployeeMenu();
     void addEmployee();
-    void viewEmployee();
     void viewAllEmployees();
-    void editEmployee();
     void deleteEmployee();
 
     // Competence management
     void displayCompetenceMenu();
     void addCompetence();
-    void viewCompetence();
     void viewAllCompetences();
-    void editCompetence();
     void deleteCompetence();
 
     // Matrix management
@@ -46,7 +42,6 @@ private:
     void addMatrix();
     void viewMatrix();
     void viewAllMatrices();
-    void editMatrix();
     void manageMatrixCompetencies();
     void deleteMatrix();
 
@@ -54,15 +49,11 @@ private:
     void displayAssessmentMenu();
     void assessEmployee();
     void viewEmployeeAssessments();
-    void editAssessment();
     void deleteAssessment();
 
     // Analysis and reports
     void displayAnalysisMenu();
     void analyzeEmployeeCompliance();
-    void analyzeMatrixCompliance();
-    void viewGapAnalysis();
-    void viewStatistics();
 
     // Utility methods
     void clearScreen();

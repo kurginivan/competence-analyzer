@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace UI {
 
@@ -71,21 +72,17 @@ void ConsoleUI::displayEmployeeMenu() {
     while (choice != 0) {
         std::cout << "\n=== Управление сотрудниками ===\n";
         std::cout << "1. Добавить сотрудника\n";
-        std::cout << "2. Просмотреть сотрудника\n";
-        std::cout << "3. Просмотреть всех сотрудников\n";
-        std::cout << "4. Отредактировать сотрудника\n";
-        std::cout << "5. Удалить сотрудника\n";
+        std::cout << "2. Просмотреть всех сотрудников\n";
+        std::cout << "3. Удалить сотрудника\n";
         std::cout << "0. Вернуться в главное меню\n";
-        std::cout << "\nВыберите опцию (0-5): ";
+        std::cout << "\nВыберите опцию (0-3): ";
 
-        choice = getChoiceInput(0, 5);
+        choice = getChoiceInput(0, 3);
 
         switch (choice) {
             case 1: addEmployee(); break;
-            case 2: viewEmployee(); break;
-            case 3: viewAllEmployees(); break;
-            case 4: editEmployee(); break;
-            case 5: deleteEmployee(); break;
+            case 2: viewAllEmployees(); break;
+            case 3: deleteEmployee(); break;
             case 0: break;
             default:
                 std::cout << "Неверный выбор.\n";
@@ -97,12 +94,33 @@ void ConsoleUI::addEmployee() {
     std::cout << "\n=== Добавление нового сотрудника ===\n";
 
     std::string name = getStringInput("Имя сотрудника: ");
-    std::string position = getStringInput("Должность: ");
+    int positionId = -1;
+    try {
+        auto positions = db->getAllPositions();
+        if (!positions.empty()) {
+            std::cout << "\nДоступные должности:\n";
+            std::cout << std::string(60, '-') << "\n";
+            std::cout << std::left << std::setw(10) << "ID"
+                      << std::setw(40) << "Название" << "\n";
+            std::cout << std::string(60, '-') << "\n";
+            for (const auto& pos : positions) {
+                std::cout << std::left << std::setw(10) << pos.getId()
+                          << std::setw(40) << pos.getName() << "\n";
+            }
+            std::cout << std::string(60, '-') << "\n";
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "\n✗ Ошибка при загрузке должностей: " << e.what() << "\n";
+    }
+    int inputPositionId = getIntInput("ID должности (0 - без должности): ");
+    if (inputPositionId > 0) {
+        positionId = inputPositionId;
+    }
     std::string department = getStringInput("Отдел: ");
     std::string email = getStringInput("Email: ");
 
     try {
-        Models::Employee emp(0, name, position, department, email);
+        Models::Employee emp(0, name, positionId, department, email);
         int id = db->addEmployee(emp);
         std::cout << "\n✓ Сотрудник успешно добавлен! ID: " << id << "\n";
     } catch (const std::exception& e) {
@@ -112,23 +130,18 @@ void ConsoleUI::addEmployee() {
     pause();
 }
 
-void ConsoleUI::viewEmployee() {
-    int id = getIntInput("\nВведите ID сотрудника: ");
-
-    try {
-        auto emp = db->getEmployee(id);
-        std::cout << "\n=== Информация о сотруднике ===\n";
-        emp.display();
-    } catch (const std::exception& e) {
-        std::cerr << "✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
 void ConsoleUI::viewAllEmployees() {
     try {
         auto employees = db->getAllEmployees();
+        std::unordered_map<int, std::string> positionNames;
+        try {
+            auto positions = db->getAllPositions();
+            for (const auto& pos : positions) {
+                positionNames[pos.getId()] = pos.getName();
+            }
+        } catch (const std::exception&) {
+            positionNames.clear();
+        }
 
         std::cout << "\n=== Все сотрудники ===\n";
         if (employees.empty()) {
@@ -143,9 +156,18 @@ void ConsoleUI::viewAllEmployees() {
             std::cout << std::string(100, '-') << "\n";
 
             for (const auto& emp : employees) {
+                std::string positionName = "-";
+                if (emp.getPositionId() != -1) {
+                    auto it = positionNames.find(emp.getPositionId());
+                    if (it != positionNames.end()) {
+                        positionName = it->second;
+                    } else {
+                        positionName = std::to_string(emp.getPositionId());
+                    }
+                }
                 std::cout << std::left << std::setw(10) << emp.getId()
                           << std::setw(25) << emp.getName()
-                          << std::setw(20) << emp.getPosition()
+                          << std::setw(20) << positionName
                           << std::setw(25) << emp.getDepartment()
                           << std::setw(20) << emp.getEmail() << "\n";
             }
@@ -153,38 +175,6 @@ void ConsoleUI::viewAllEmployees() {
         }
     } catch (const std::exception& e) {
         std::cerr << "✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
-void ConsoleUI::editEmployee() {
-    int id = getIntInput("\nВведите ID сотрудника для редактирования: ");
-
-    try {
-        auto emp = db->getEmployee(id);
-
-        std::cout << "\nТекущая информация:\n";
-        emp.display();
-
-        std::cout << "\nВведите новую информацию (нажмите Enter чтобы оставить без изменений):\n";
-        std::string name = getStringInput("Имя [" + emp.getName() + "]: ");
-        std::string position = getStringInput("Должность [" + emp.getPosition() + "]: ");
-        std::string department = getStringInput("Отдел [" + emp.getDepartment() + "]: ");
-        std::string email = getStringInput("Email [" + emp.getEmail() + "]: ");
-
-        if (!name.empty()) emp.setName(name);
-        if (!position.empty()) emp.setPosition(position);
-        if (!department.empty()) emp.setDepartment(department);
-        if (!email.empty()) emp.setEmail(email);
-
-        if (db->updateEmployee(emp)) {
-            std::cout << "\n✓ Сотрудник успешно обновлен!\n";
-        } else {
-            std::cout << "\n✗ Ошибка при обновлении сотрудника.\n";
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "\n✗ Ошибка: " << e.what() << "\n";
     }
 
     pause();
@@ -211,21 +201,17 @@ void ConsoleUI::displayCompetenceMenu() {
     while (choice != 0) {
         std::cout << "\n=== Управление компетенциями ===\n";
         std::cout << "1. Добавить компетенцию\n";
-        std::cout << "2. Просмотреть компетенцию\n";
-        std::cout << "3. Просмотреть все компетенции\n";
-        std::cout << "4. Отредактировать компетенцию\n";
-        std::cout << "5. Удалить компетенцию\n";
+        std::cout << "2. Просмотреть все компетенции\n";
+        std::cout << "3. Удалить компетенцию\n";
         std::cout << "0. Вернуться в главное меню\n";
-        std::cout << "\nВыберите опцию (0-5): ";
+        std::cout << "\nВыберите опцию (0-3): ";
 
-        choice = getChoiceInput(0, 5);
+        choice = getChoiceInput(0, 3);
 
         switch (choice) {
             case 1: addCompetence(); break;
-            case 2: viewCompetence(); break;
-            case 3: viewAllCompetences(); break;
-            case 4: editCompetence(); break;
-            case 5: deleteCompetence(); break;
+            case 2: viewAllCompetences(); break;
+            case 3: deleteCompetence(); break;
             case 0: break;
             default:
                 std::cout << "Неверный выбор.\n";
@@ -246,20 +232,6 @@ void ConsoleUI::addCompetence() {
         std::cout << "\n✓ Компетенция успешно добавлена! ID: " << id << "\n";
     } catch (const std::exception& e) {
         std::cerr << "\n✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
-void ConsoleUI::viewCompetence() {
-    int id = getIntInput("\nВведите ID компетенции: ");
-
-    try {
-        auto comp = db->getCompetence(id);
-        std::cout << "\n=== Информация о компетенции ===\n";
-        comp.display();
-    } catch (const std::exception& e) {
-        std::cerr << "✗ Ошибка: " << e.what() << "\n";
     }
 
     pause();
@@ -292,36 +264,6 @@ void ConsoleUI::viewAllCompetences() {
         }
     } catch (const std::exception& e) {
         std::cerr << "✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
-void ConsoleUI::editCompetence() {
-    int id = getIntInput("\nВведите ID компетенции для редактирования: ");
-
-    try {
-        auto comp = db->getCompetence(id);
-
-        std::cout << "\nТекущая информация:\n";
-        comp.display();
-
-        std::cout << "\nВведите новую информацию (нажмите Enter чтобы оставить без изменений):\n";
-        std::string name = getStringInput("Название [" + comp.getName() + "]: ");
-        std::string description = getStringInput("Описание [" + comp.getDescription() + "]: ");
-        std::string category = getStringInput("Категория [" + comp.getCategory() + "]: ");
-
-        if (!name.empty()) comp.setName(name);
-        if (!description.empty()) comp.setDescription(description);
-        if (!category.empty()) comp.setCategory(category);
-
-        if (db->updateCompetence(comp)) {
-            std::cout << "\n✓ Компетенция успешно обновлена!\n";
-        } else {
-            std::cout << "\n✗ Ошибка при обновлении компетенции.\n";
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "\n✗ Ошибка: " << e.what() << "\n";
     }
 
     pause();
@@ -555,18 +497,16 @@ void ConsoleUI::displayAssessmentMenu() {
         std::cout << "\n=== Управление оценками ===\n";
         std::cout << "1. Оценить компетенцию сотрудника\n";
         std::cout << "2. Просмотреть оценки сотрудника\n";
-        std::cout << "3. Отредактировать оценку\n";
-        std::cout << "4. Удалить оценку\n";
+        std::cout << "3. Удалить оценку\n";
         std::cout << "0. Вернуться в главное меню\n";
-        std::cout << "\nВыберите опцию (0-4): ";
+        std::cout << "\nВыберите опцию (0-3): ";
 
-        choice = getChoiceInput(0, 4);
+        choice = getChoiceInput(0, 3);
 
         switch (choice) {
             case 1: assessEmployee(); break;
             case 2: viewEmployeeAssessments(); break;
-            case 3: editAssessment(); break;
-            case 4: deleteAssessment(); break;
+            case 3: deleteAssessment(); break;
             case 0: break;
             default:
                 std::cout << "Неверный выбор.\n";
@@ -634,39 +574,6 @@ void ConsoleUI::viewEmployeeAssessments() {
     pause();
 }
 
-void ConsoleUI::editAssessment() {
-    int id = getIntInput("\nВведите ID оценки для редактирования: ");
-
-    try {
-        auto assessment = db->getAssessment(id);
-
-        std::cout << "\nТекущая оценка:\n";
-        assessment.display();
-
-        int newLevel = getIntInput("Новый уровень (1-5): ");
-        if (newLevel < 1 || newLevel > 5) {
-            std::cout << "✗ Уровень должен быть от 1 до 5.\n";
-            pause();
-            return;
-        }
-
-        std::string newComments = getStringInput("Новые комментарии: ");
-
-        assessment.setActualLevel(newLevel);
-        assessment.setComments(newComments);
-
-        if (db->updateAssessment(assessment)) {
-            std::cout << "\n✓ Оценка успешно обновлена!\n";
-        } else {
-            std::cout << "\n✗ Ошибка при обновлении оценки.\n";
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "\n✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
 void ConsoleUI::deleteAssessment() {
     int id = getIntInput("\nВведите ID оценки для удаления: ");
 
@@ -688,19 +595,13 @@ void ConsoleUI::displayAnalysisMenu() {
     while (choice != 0) {
         std::cout << "\n=== Анализ и отчеты ===\n";
         std::cout << "1. Анализ соответствия сотрудника\n";
-        std::cout << "2. Анализ соответствия матрицы\n";
-        std::cout << "3. Анализ пробелов\n";
-        std::cout << "4. Просмотреть статистику\n";
         std::cout << "0. Вернуться в главное меню\n";
-        std::cout << "\nВыберите опцию (0-4): ";
+        std::cout << "\nВыберите опцию (0-1): ";
 
-        choice = getChoiceInput(0, 4);
+        choice = getChoiceInput(0, 1);
 
         switch (choice) {
             case 1: analyzeEmployeeCompliance(); break;
-            case 2: analyzeMatrixCompliance(); break;
-            case 3: viewGapAnalysis(); break;
-            case 4: viewStatistics(); break;
             case 0: break;
             default:
                 std::cout << "Неверный выбор.\n";
@@ -714,135 +615,33 @@ void ConsoleUI::analyzeEmployeeCompliance() {
     try {
         auto employee = db->getEmployee(employeeId);
         
-        // Получить все матрицы и получить те, которые соответствуют должности сотрудника
-        auto allMatrices = db->getAllMatrices();
-        std::vector<std::pair<int, std::string>> matchingMatrices; // ID матрицы и имя
-        
-        // Если у сотрудника есть должность, найти матрицы для этой должности
-        std::string employeePosition = employee.getPosition();
-        for (const auto& matrix : allMatrices) {
-            auto positionsForMatrix = db->getPositionsByMatrix(matrix.getId());
-            for (const auto& pos : positionsForMatrix) {
-                if (pos.getName() == employeePosition) {
-                    matchingMatrices.emplace_back(matrix.getId(), matrix.getName());
-                    break;
-                }
+        int matrixId = -1;
+        if (employee.getPositionId() != -1) {
+            auto position = db->getPosition(employee.getPositionId());
+            if (position.getMatrixId() != -1) {
+                matrixId = position.getMatrixId();
+                std::cout << "\n✓ Используем матрицу для должности (ID матрицы: " << matrixId << ")\n";
             }
         }
 
-        int matrixId = -1;
-
-        if (matchingMatrices.empty()) {
-            // Показать все матрицы для выбора
-            std::cout << "\nДля должности \"" << employeePosition << "\" соответствующие матрицы не найдены.\n";
-            std::cout << "Выберите матрицу для анализа из доступных:\n";
+        if (matrixId == -1) {
+            auto allMatrices = db->getAllMatrices();
+            std::cout << "\nМатрица для сотрудника не задана. Выберите матрицу для анализа:\n";
             std::cout << std::string(60, '-') << "\n";
             std::cout << std::left << std::setw(10) << "ID" << std::setw(50) << "Название\n";
             std::cout << std::string(60, '-') << "\n";
-
             for (const auto& matrix : allMatrices) {
                 std::cout << std::left << std::setw(10) << matrix.getId()
                           << std::setw(50) << matrix.getName() << "\n";
             }
             std::cout << std::string(60, '-') << "\n";
             matrixId = getIntInput("ID матрицы: ");
-        } else if (matchingMatrices.size() == 1) {
-            // Одна соответствующая матрица, используем её
-            matrixId = matchingMatrices[0].first;
-            std::cout << "\n✓ Найдена матрица для должности \"" << employeePosition << "\": " 
-                      << matchingMatrices[0].second << " (ID: " << matrixId << ")\n";
-        } else {
-            // Несколько соответствующих матриц, предложить выбор
-            std::cout << "\nДля должности \"" << employeePosition << "\" найдено несколько матриц:\n";
-            std::cout << std::string(60, '-') << "\n";
-            for (size_t i = 0; i < matchingMatrices.size(); ++i) {
-                std::cout << (i + 1) << ". " << matchingMatrices[i].second 
-                          << " (ID: " << matchingMatrices[i].first << ")\n";
-            }
-            std::cout << std::string(60, '-') << "\n";
-            
-            int choice = getChoiceInput(1, static_cast<int>(matchingMatrices.size()));
-            matrixId = matchingMatrices[choice - 1].first;
         }
 
-        reportGenerator->printDetailedComplianceAnalysis(employeeId, matrixId);
+        auto report = analysisEngine->analyzeEmployeeCompliance(employeeId, matrixId);
+        reportGenerator->printEmployeeComplianceReport(report);
     } catch (const std::exception& e) {
         std::cerr << "✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
-void ConsoleUI::analyzeMatrixCompliance() {
-    int matrixId = getIntInput("\nВведите ID матрицы: ");
-
-    try {
-        reportGenerator->printMatrixOverallAnalysis(matrixId);
-    } catch (const std::exception& e) {
-        std::cerr << "✗ Ошибка: " << e.what() << "\n";
-    }
-
-    pause();
-}
-
-void ConsoleUI::viewGapAnalysis() {
-    std::cout << "\n=== Анализ пробелов ===\n";
-    std::cout << "1. Пробелы сотрудника\n";
-    std::cout << "2. Все пробелы в матрице\n";
-    int choice = getChoiceInput(1, 2);
-
-    if (choice == 1) {
-        int employeeId = getIntInput("ID сотрудника: ");
-        int matrixId = getIntInput("ID матрицы: ");
-
-        try {
-            auto gaps = analysisEngine->getEmployeeGaps(employeeId, matrixId);
-            reportGenerator->printGapAnalysisReport(employeeId, gaps);
-        } catch (const std::exception& e) {
-            std::cerr << "✗ Ошибка: " << e.what() << "\n";
-        }
-    } else {
-        int matrixId = getIntInput("ID матрицы: ");
-
-        try {
-            auto allGaps = analysisEngine->getAllGaps(matrixId);
-            reportGenerator->printMatrixGapAnalysisReport(matrixId, allGaps);
-        } catch (const std::exception& e) {
-            std::cerr << "✗ Ошибка: " << e.what() << "\n";
-        }
-    }
-
-    pause();
-}
-
-void ConsoleUI::viewStatistics() {
-    std::cout << "\n=== Меню статистики ===\n";
-    std::cout << "1. Статистика матрицы\n";
-    std::cout << "2. Статистика компетенции\n";
-    std::cout << "3. Статистика сотрудника\n";
-    int choice = getChoiceInput(1, 3);
-
-    if (choice == 1) {
-        int matrixId = getIntInput("ID матрицы: ");
-        try {
-            reportGenerator->printMatrixStatistics(matrixId);
-        } catch (const std::exception& e) {
-            std::cerr << "✗ Ошибка: " << e.what() << "\n";
-        }
-    } else if (choice == 2) {
-        int matrixId = getIntInput("ID матрицы: ");
-        try {
-            reportGenerator->printCompetenceStatistics(matrixId);
-        } catch (const std::exception& e) {
-            std::cerr << "✗ Ошибка: " << e.what() << "\n";
-        }
-    } else {
-        int employeeId = getIntInput("ID сотрудника: ");
-        try {
-            reportGenerator->printEmployeeStatistics(employeeId);
-        } catch (const std::exception& e) {
-            std::cerr << "✗ Ошибка: " << e.what() << "\n";
-        }
     }
 
     pause();

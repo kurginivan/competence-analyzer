@@ -44,11 +44,11 @@ services:
     tty: true
     restart: unless-stopped
 
-  # Python Web UI
+  # C++ Web UI
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/Dockerfile.web_cpp
     container_name: competence_analyzer_web
     depends_on:
       db:
@@ -59,6 +59,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       DATABASE_NAME: competence_analyzer
+      COMP_ANALYZER_WEB_STATIC: /app/web/static
     ports:
       - "8000:8000"
     networks:

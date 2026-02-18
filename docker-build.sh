@@ -25,23 +25,8 @@ fi
 echo "✓ Docker and Docker Compose found"
 echo ""
 
-# Option to use multi-stage build
-echo "Which build type would you prefer?"
-echo "1. Standard Dockerfile (larger image, easier debugging)"
-echo "2. Multi-stage Dockerfile (optimized, smaller image)"
-echo ""
-read -p "Enter choice (1 or 2) [default: 1]: " choice
-choice=${choice:-1}
-
-if [ "$choice" == "2" ]; then
-    echo ""
-    echo "Building with multi-stage Dockerfile..."
-    docker build -f docker/Dockerfile.multistage -t competence-analyzer:latest .
-else
-    echo ""
-    echo "Building with standard Dockerfile..."
-    docker build -f docker/Dockerfile -t competence-analyzer:latest .
-fi
+echo "Building all services with docker-compose..."
+docker-compose build
 
 echo ""
 echo "=========================================="

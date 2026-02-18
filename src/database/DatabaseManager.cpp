@@ -1,11 +1,41 @@
 #include "DatabaseManager.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <fstream>
+#include <sstream>
+#include <cstdlib>
+
+namespace {
+
+std::string trimCopy(const std::string& value) {
+    const char* whitespace = " \t\r\n";
+    const auto start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+    const auto end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+}
 
 namespace Database {
 
 DatabaseManager::DatabaseManager(const std::string& connectionString)
-    : connectionString(connectionString), connected(false) {}
+    : connectionString(connectionString), connected(false) {
+    const char* envPath = std::getenv("COMP_ANALYZER_CPP_SQL");
+    queriesPath = envPath ? envPath : "sql/queries_cpp.sql";
+    try {
+        loadQueries(queriesPath);
+    } catch (const std::exception&) {
+        if (!envPath) {
+            queriesPath = "../sql/queries_cpp.sql";
+            loadQueries(queriesPath);
+        } else {
+            throw;
+        }
+    }
+}
 
 DatabaseManager::~DatabaseManager() {
     disconnect();
@@ -37,6 +67,51 @@ bool DatabaseManager::isConnected() const {
     return connected && connection && connection->is_open();
 }
 
+void DatabaseManager::loadQueries(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open SQL queries file: " + path);
+    }
+
+    std::string line;
+    std::string currentName;
+    std::ostringstream buffer;
+
+    auto flush = [&]() {
+        if (!currentName.empty()) {
+            queries[currentName] = buffer.str();
+            buffer.str("");
+            buffer.clear();
+        }
+    };
+
+    while (std::getline(file, line)) {
+        if (line.rfind("-- name:", 0) == 0) {
+            flush();
+            currentName = trimCopy(line.substr(8));
+            continue;
+        }
+        if (currentName.empty()) {
+            continue;
+        }
+        buffer << line << "\n";
+    }
+
+    flush();
+
+    if (queries.empty()) {
+        throw std::runtime_error("No SQL queries loaded from: " + path);
+    }
+}
+
+const std::string& DatabaseManager::getQuery(const std::string& name) const {
+    const auto it = queries.find(name);
+    if (it == queries.end()) {
+        throw std::runtime_error("SQL query not found: " + name);
+    }
+    return it->second;
+}
+
 // ==================== Employee Operations ====================
 
 int DatabaseManager::addEmployee(const Models::Employee& employee) {
@@ -44,14 +119,23 @@ int DatabaseManager::addEmployee(const Models::Employee& employee) {
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "INSERT INTO employees (name, position, department, email) "
-            "VALUES ($1, $2, $3, $4) RETURNING id",
-            employee.getName(),
-            employee.getPosition(),
-            employee.getDepartment(),
-            employee.getEmail()
-        );
+        pqxx::result result;
+        if (employee.getPositionId() != -1) {
+            result = txn.exec_params(
+                getQuery("employees_insert_with_position"),
+                employee.getName(),
+                employee.getPositionId(),
+                employee.getDepartment(),
+                employee.getEmail()
+            );
+        } else {
+            result = txn.exec_params(
+                getQuery("employees_insert_without_position"),
+                employee.getName(),
+                employee.getDepartment(),
+                employee.getEmail()
+            );
+        }
         txn.commit();
         return result[0]["id"].as<int>();
     } catch (const std::exception& e) {
@@ -65,11 +149,7 @@ Models::Employee DatabaseManager::getEmployee(int id) {
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, name, position, department, email, created_at, updated_at "
-            "FROM employees WHERE id = $1",
-            id
-        );
+        auto result = txn.exec_params(getQuery("employees_get_by_id"), id);
         if (result.empty()) {
             throw std::runtime_error("Сотрудник не найден");
         }
@@ -86,10 +166,7 @@ std::vector<Models::Employee> DatabaseManager::getAllEmployees() {
     std::vector<Models::Employee> employees;
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec(
-            "SELECT id, name, position, department, email, created_at, updated_at "
-            "FROM employees ORDER BY id"
-        );
+        auto result = txn.exec(getQuery("employees_get_all"));
         for (auto row : result) {
             employees.push_back(parseEmployeeRow(row));
         }
@@ -100,37 +177,12 @@ std::vector<Models::Employee> DatabaseManager::getAllEmployees() {
     return employees;
 }
 
-bool DatabaseManager::updateEmployee(const Models::Employee& employee) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "UPDATE employees SET name = $1, position = $2, department = $3, "
-            "email = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5",
-            employee.getName(),
-            employee.getPosition(),
-            employee.getDepartment(),
-            employee.getEmail(),
-            employee.getId()
-        );
-        txn.commit();
-        return result.affected_rows() > 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Ошибка при обновлении сотрудника: " << e.what() << "\n";
-        throw;
-    }
-}
-
 bool DatabaseManager::deleteEmployee(int id) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "DELETE FROM employees WHERE id = $1",
-            id
-        );
+        auto result = txn.exec_params(getQuery("employees_delete"), id);
         txn.commit();
         return result.affected_rows() > 0;
     } catch (const std::exception& e) {
@@ -147,8 +199,7 @@ int DatabaseManager::addCompetence(const Models::Competence& competence) {
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "INSERT INTO competences (name, description, category) "
-            "VALUES ($1, $2, $3) RETURNING id",
+            getQuery("competences_insert"),
             competence.getName(),
             competence.getDescription(),
             competence.getCategory()
@@ -161,36 +212,13 @@ int DatabaseManager::addCompetence(const Models::Competence& competence) {
     }
 }
 
-Models::Competence DatabaseManager::getCompetence(int id) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, name, description, category, created_at, updated_at "
-            "FROM competences WHERE id = $1",
-            id
-        );
-        if (result.empty()) {
-            throw std::runtime_error("Компетенция не найдена");
-        }
-        return parseCompetenceRow(result[0]);
-    } catch (const std::exception& e) {
-        std::cerr << "Ошибка при получении компетенции: " << e.what() << "\n";
-        throw;
-    }
-}
-
 std::vector<Models::Competence> DatabaseManager::getAllCompetences() {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
     std::vector<Models::Competence> competences;
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec(
-            "SELECT id, name, description, category, created_at, updated_at "
-            "FROM competences ORDER BY category, name"
-        );
+        auto result = txn.exec(getQuery("competences_get_all"));
         for (auto row : result) {
             competences.push_back(parseCompetenceRow(row));
         }
@@ -201,57 +229,12 @@ std::vector<Models::Competence> DatabaseManager::getAllCompetences() {
     return competences;
 }
 
-std::vector<Models::Competence> DatabaseManager::getCompetencesByCategory(const std::string& category) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    std::vector<Models::Competence> competences;
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, name, description, category, created_at, updated_at "
-            "FROM competences WHERE category = $1 ORDER BY name",
-            category
-        );
-        for (auto row : result) {
-            competences.push_back(parseCompetenceRow(row));
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "Error getting competences by category: " << e.what() << "\n";
-        throw;
-    }
-    return competences;
-}
-
-bool DatabaseManager::updateCompetence(const Models::Competence& competence) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "UPDATE competences SET name = $1, description = $2, category = $3, "
-            "updated_at = CURRENT_TIMESTAMP WHERE id = $4",
-            competence.getName(),
-            competence.getDescription(),
-            competence.getCategory(),
-            competence.getId()
-        );
-        txn.commit();
-        return result.affected_rows() > 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Error updating competence: " << e.what() << "\n";
-        throw;
-    }
-}
-
 bool DatabaseManager::deleteCompetence(int id) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "DELETE FROM competences WHERE id = $1",
-            id
-        );
+        auto result = txn.exec_params(getQuery("competences_delete"), id);
         txn.commit();
         return result.affected_rows() > 0;
     } catch (const std::exception& e) {
@@ -268,8 +251,7 @@ int DatabaseManager::addMatrix(const Models::Matrix& matrix) {
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "INSERT INTO matrices (name, description) "
-            "VALUES ($1, $2) RETURNING id",
+            getQuery("matrices_insert"),
             matrix.getName(),
             matrix.getDescription()
         );
@@ -286,11 +268,7 @@ Models::Matrix DatabaseManager::getMatrix(int id) {
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, name, description, created_at, updated_at "
-            "FROM matrices WHERE id = $1",
-            id
-        );
+        auto result = txn.exec_params(getQuery("matrices_get_by_id"), id);
         if (result.empty()) {
             throw std::runtime_error("Matrix not found");
         }
@@ -307,10 +285,7 @@ std::vector<Models::Matrix> DatabaseManager::getAllMatrices() {
     std::vector<Models::Matrix> matrices;
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec(
-            "SELECT id, name, description, created_at, updated_at "
-            "FROM matrices ORDER BY id"
-        );
+        auto result = txn.exec(getQuery("matrices_get_all"));
         for (auto row : result) {
             matrices.push_back(parseMatrixRow(row));
         }
@@ -321,35 +296,12 @@ std::vector<Models::Matrix> DatabaseManager::getAllMatrices() {
     return matrices;
 }
 
-bool DatabaseManager::updateMatrix(const Models::Matrix& matrix) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "UPDATE matrices SET name = $1, description = $2, "
-            "updated_at = CURRENT_TIMESTAMP WHERE id = $3",
-            matrix.getName(),
-            matrix.getDescription(),
-            matrix.getId()
-        );
-        txn.commit();
-        return result.affected_rows() > 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Error updating matrix: " << e.what() << "\n";
-        throw;
-    }
-}
-
 bool DatabaseManager::deleteMatrix(int id) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "DELETE FROM matrices WHERE id = $1",
-            id
-        );
+        auto result = txn.exec_params(getQuery("matrices_delete"), id);
         txn.commit();
         return result.affected_rows() > 0;
     } catch (const std::exception& e) {
@@ -366,9 +318,7 @@ bool DatabaseManager::addCompetencyToMatrix(int matrixId, int competenceId, int 
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "INSERT INTO matrix_competencies (matrix_id, competence_id, required_level) "
-            "VALUES ($1, $2, $3) ON CONFLICT (matrix_id, competence_id) "
-            "DO UPDATE SET required_level = $3",
+            getQuery("matrix_competencies_upsert"),
             matrixId, competenceId, requiredLevel
         );
         txn.commit();
@@ -385,7 +335,7 @@ bool DatabaseManager::removeCompetencyFromMatrix(int matrixId, int competenceId)
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "DELETE FROM matrix_competencies WHERE matrix_id = $1 AND competence_id = $2",
+            getQuery("matrix_competencies_delete"),
             matrixId, competenceId
         );
         txn.commit();
@@ -403,8 +353,7 @@ std::vector<std::pair<int, int>> DatabaseManager::getMatrixCompetencies(int matr
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "SELECT competence_id, required_level FROM matrix_competencies "
-            "WHERE matrix_id = $1",
+            getQuery("matrix_competencies_get_by_matrix"),
             matrixId
         );
         for (auto row : result) {
@@ -428,8 +377,7 @@ int DatabaseManager::addAssessment(const Models::Assessment& assessment) {
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "INSERT INTO assessments (employee_id, competence_id, actual_level, comments) "
-            "VALUES ($1, $2, $3, $4) RETURNING id",
+            getQuery("assessments_insert"),
             assessment.getEmployeeId(),
             assessment.getCompetenceId(),
             assessment.getActualLevel(),
@@ -443,26 +391,6 @@ int DatabaseManager::addAssessment(const Models::Assessment& assessment) {
     }
 }
 
-Models::Assessment DatabaseManager::getAssessment(int id) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, employee_id, competence_id, actual_level, comments, "
-            "assessment_date, created_at, updated_at FROM assessments WHERE id = $1",
-            id
-        );
-        if (result.empty()) {
-            throw std::runtime_error("Assessment not found");
-        }
-        return parseAssessmentRow(result[0]);
-    } catch (const std::exception& e) {
-        std::cerr << "Error getting assessment: " << e.what() << "\n";
-        throw;
-    }
-}
-
 std::vector<Models::Assessment> DatabaseManager::getEmployeeAssessments(int employeeId) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -470,9 +398,7 @@ std::vector<Models::Assessment> DatabaseManager::getEmployeeAssessments(int empl
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "SELECT id, employee_id, competence_id, actual_level, comments, "
-            "assessment_date, created_at, updated_at FROM assessments "
-            "WHERE employee_id = $1 ORDER BY assessment_date DESC",
+            getQuery("assessments_get_by_employee"),
             employeeId
         );
         for (auto row : result) {
@@ -485,85 +411,18 @@ std::vector<Models::Assessment> DatabaseManager::getEmployeeAssessments(int empl
     return assessments;
 }
 
-std::vector<Models::Assessment> DatabaseManager::getCompetenceAssessments(int competenceId) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    std::vector<Models::Assessment> assessments;
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, employee_id, competence_id, actual_level, comments, "
-            "assessment_date, created_at, updated_at FROM assessments "
-            "WHERE competence_id = $1 ORDER BY assessment_date DESC",
-            competenceId
-        );
-        for (auto row : result) {
-            assessments.push_back(parseAssessmentRow(row));
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "Error getting competence assessments: " << e.what() << "\n";
-        throw;
-    }
-    return assessments;
-}
-
-bool DatabaseManager::updateAssessment(const Models::Assessment& assessment) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "UPDATE assessments SET actual_level = $1, comments = $2, "
-            "updated_at = CURRENT_TIMESTAMP WHERE id = $3",
-            assessment.getActualLevel(),
-            assessment.getComments(),
-            assessment.getId()
-        );
-        txn.commit();
-        return result.affected_rows() > 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Error updating assessment: " << e.what() << "\n";
-        throw;
-    }
-}
-
 bool DatabaseManager::deleteAssessment(int id) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "DELETE FROM assessments WHERE id = $1",
-            id
-        );
+        auto result = txn.exec_params(getQuery("assessments_delete"), id);
         txn.commit();
         return result.affected_rows() > 0;
     } catch (const std::exception& e) {
         std::cerr << "Error deleting assessment: " << e.what() << "\n";
         throw;
     }
-}
-
-std::vector<Models::Assessment> DatabaseManager::getLatestAssessments(int employeeId, int limit) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    std::vector<Models::Assessment> assessments;
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, employee_id, competence_id, actual_level, comments, "
-            "assessment_date, created_at, updated_at FROM assessments "
-            "WHERE employee_id = $1 ORDER BY assessment_date DESC LIMIT $2",
-            employeeId, limit
-        );
-        for (auto row : result) {
-            assessments.push_back(parseAssessmentRow(row));
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "Error getting latest assessments: " << e.what() << "\n";
-        throw;
-    }
-    return assessments;
 }
 
 // ==================== Position Operations ====================
@@ -575,8 +434,7 @@ int DatabaseManager::addPosition(const Models::Position& position) {
         pqxx::work txn(*connection);
         if (position.getMatrixId() != -1) {
             auto result = txn.exec_params(
-                "INSERT INTO positions (name, matrix_id) "
-                "VALUES ($1, $2) RETURNING id",
+                getQuery("positions_insert_with_matrix"),
                 position.getName(),
                 position.getMatrixId()
             );
@@ -584,8 +442,7 @@ int DatabaseManager::addPosition(const Models::Position& position) {
             return result[0]["id"].as<int>();
         } else {
             auto result = txn.exec_params(
-                "INSERT INTO positions (name, matrix_id) "
-                "VALUES ($1, NULL) RETURNING id",
+                getQuery("positions_insert_without_matrix"),
                 position.getName()
             );
             txn.commit();
@@ -602,31 +459,7 @@ Models::Position DatabaseManager::getPosition(int id) {
 
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, name, matrix_id, created_at, updated_at "
-            "FROM positions WHERE id = $1",
-            id
-        );
-        if (result.empty()) {
-            throw std::runtime_error("Должность не найдена");
-        }
-        return parsePositionRow(result[0]);
-    } catch (const std::exception& e) {
-        std::cerr << "Ошибка при получении должности: " << e.what() << "\n";
-        throw;
-    }
-}
-
-Models::Position DatabaseManager::getPositionByName(const std::string& name) {
-    if (!isConnected()) throw std::runtime_error("Database not connected");
-
-    try {
-        pqxx::work txn(*connection);
-        auto result = txn.exec_params(
-            "SELECT id, name, matrix_id, created_at, updated_at "
-            "FROM positions WHERE name = $1",
-            name
-        );
+        auto result = txn.exec_params(getQuery("positions_get_by_id"), id);
         if (result.empty()) {
             throw std::runtime_error("Должность не найдена");
         }
@@ -643,10 +476,7 @@ std::vector<Models::Position> DatabaseManager::getAllPositions() {
     std::vector<Models::Position> positions;
     try {
         pqxx::work txn(*connection);
-        auto result = txn.exec(
-            "SELECT id, name, matrix_id, created_at, updated_at "
-            "FROM positions ORDER BY id"
-        );
+        auto result = txn.exec(getQuery("positions_get_all"));
         for (auto row : result) {
             positions.push_back(parsePositionRow(row));
         }
@@ -664,8 +494,7 @@ std::vector<Models::Position> DatabaseManager::getPositionsByMatrix(int matrixId
     try {
         pqxx::work txn(*connection);
         auto result = txn.exec_params(
-            "SELECT id, name, matrix_id, created_at, updated_at "
-            "FROM positions WHERE matrix_id = $1 ORDER BY id",
+            getQuery("positions_get_by_matrix"),
             matrixId
         );
         for (auto row : result) {
@@ -685,14 +514,14 @@ bool DatabaseManager::updatePosition(const Models::Position& position) {
         pqxx::work txn(*connection);
         if (position.getMatrixId() != -1) {
             txn.exec_params(
-                "UPDATE positions SET name = $1, matrix_id = $2 WHERE id = $3",
+                getQuery("positions_update_with_matrix"),
                 position.getName(),
                 position.getMatrixId(),
                 position.getId()
             );
         } else {
             txn.exec_params(
-                "UPDATE positions SET name = $1, matrix_id = NULL WHERE id = $2",
+                getQuery("positions_update_without_matrix"),
                 position.getName(),
                 position.getId()
             );
@@ -710,7 +539,7 @@ bool DatabaseManager::deletePosition(int id) {
 
     try {
         pqxx::work txn(*connection);
-        txn.exec_params("DELETE FROM positions WHERE id = $1", id);
+        txn.exec_params(getQuery("positions_delete"), id);
         txn.commit();
         return true;
     } catch (const std::exception& e) {
@@ -722,10 +551,14 @@ bool DatabaseManager::deletePosition(int id) {
 // ==================== Helper Methods ====================
 
 Models::Employee DatabaseManager::parseEmployeeRow(const pqxx::row& row) {
+    int positionId = -1;
+    if (!row["position_id"].is_null()) {
+        positionId = row["position_id"].as<int>();
+    }
     Models::Employee emp(
         row["id"].as<int>(),
         row["name"].as<std::string>(),
-        row["position"].as<std::string>(),
+        positionId,
         row["department"].as<std::string>(),
         row["email"].as<std::string>()
     );

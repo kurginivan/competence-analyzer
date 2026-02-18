@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 #include <pqxx/pqxx>
 #include "../models/Employee.hpp"
 #include "../models/Competence.hpp"
@@ -26,21 +27,16 @@ public:
     int addEmployee(const Models::Employee& employee);
     Models::Employee getEmployee(int id);
     std::vector<Models::Employee> getAllEmployees();
-    bool updateEmployee(const Models::Employee& employee);
     bool deleteEmployee(int id);
 
     // Competence operations
     int addCompetence(const Models::Competence& competence);
-    Models::Competence getCompetence(int id);
     std::vector<Models::Competence> getAllCompetences();
-    std::vector<Models::Competence> getCompetencesByCategory(const std::string& category);
-    bool updateCompetence(const Models::Competence& competence);
     bool deleteCompetence(int id);
 
     // Position operations
     int addPosition(const Models::Position& position);
     Models::Position getPosition(int id);
-    Models::Position getPositionByName(const std::string& name);
     std::vector<Models::Position> getAllPositions();
     bool updatePosition(const Models::Position& position);
     bool deletePosition(int id);
@@ -50,7 +46,6 @@ public:
     int addMatrix(const Models::Matrix& matrix);
     Models::Matrix getMatrix(int id);
     std::vector<Models::Matrix> getAllMatrices();
-    bool updateMatrix(const Models::Matrix& matrix);
     bool deleteMatrix(int id);
 
     // Matrix-Competence relations
@@ -60,19 +55,19 @@ public:
 
     // Assessment operations
     int addAssessment(const Models::Assessment& assessment);
-    Models::Assessment getAssessment(int id);
     std::vector<Models::Assessment> getEmployeeAssessments(int employeeId);
-    std::vector<Models::Assessment> getCompetenceAssessments(int competenceId);
-    bool updateAssessment(const Models::Assessment& assessment);
     bool deleteAssessment(int id);
-
-    // Query helpers
-    std::vector<Models::Assessment> getLatestAssessments(int employeeId, int limit = 5);
 
 private:
     std::string connectionString;
     std::unique_ptr<pqxx::connection> connection;
     bool connected;
+
+    std::unordered_map<std::string, std::string> queries;
+    std::string queriesPath;
+
+    void loadQueries(const std::string& path);
+    const std::string& getQuery(const std::string& name) const;
 
     // Helper methods for parsing results
     Models::Employee parseEmployeeRow(const pqxx::row& row);

@@ -14,6 +14,24 @@ pkg_check_modules(PQ REQUIRED libpq)
 
 # PostgreSQL
 find_package(PostgreSQL REQUIRED)
+find_package(Threads REQUIRED)
+
+# Third-party dependencies for C++ web server
+include(FetchContent)
+set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CROW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    crow
+    GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
+    GIT_TAG v1.0
+)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(crow nlohmann_json)
 
 # Debug: Print found packages info
 message(STATUS "PostgreSQL found: ${PostgreSQL_FOUND}")
@@ -91,8 +109,37 @@ target_include_directories(competence-analyzer PRIVATE ${PQXX_INCLUDE_DIRS} ${PQ
 target_compile_options(competence-analyzer PRIVATE ${PQXX_CFLAGS_OTHER} ${PQ_CFLAGS_OTHER})
 target_link_directories(competence-analyzer PRIVATE ${PQXX_LIBRARY_DIRS} ${PQ_LIBRARY_DIRS})
 
+# Create web executable
+set(WEB_SOURCES
+    src/web_main.cpp
+    src/database/DatabaseManager.cpp
+    src/models/Employee.cpp
+    src/models/Competence.cpp
+    src/models/Position.cpp
+    src/models/Matrix.cpp
+    src/models/Assessment.cpp
+    src/services/AnalysisEngine.cpp
+)
+
+add_executable(competence-analyzer-web ${WEB_SOURCES})
+
+target_link_libraries(competence-analyzer-web
+    PRIVATE
+    Crow::Crow
+    nlohmann_json::nlohmann_json
+    Threads::Threads
+    pqxx
+    pq
+    stdc++
+)
+
+target_include_directories(competence-analyzer-web PRIVATE ${PQXX_INCLUDE_DIRS} ${PQ_INCLUDE_DIRS})
+target_compile_options(competence-analyzer-web PRIVATE ${PQXX_CFLAGS_OTHER} ${PQ_CFLAGS_OTHER})
+target_link_directories(competence-analyzer-web PRIVATE ${PQXX_LIBRARY_DIRS} ${PQ_LIBRARY_DIRS})
+
 # Create install targets
 install(TARGETS competence-analyzer DESTINATION bin)
+install(TARGETS competence-analyzer-web DESTINATION bin)
 install(FILES sql/schema.sql DESTINATION share/competence-analyzer)
 install(FILES sql/test_data.sql DESTINATION share/competence-analyzer)
 

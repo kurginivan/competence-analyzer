@@ -32,20 +32,6 @@ public:
 
     // Compliance analysis
     ComplianceReport analyzeEmployeeCompliance(int employeeId, int matrixId);
-    std::vector<ComplianceReport> analyzeAllEmployeeCompliance(int matrixId);
-
-    // Gap analysis
-    std::vector<GapAnalysis> getEmployeeGaps(int employeeId, int matrixId);
-    std::map<int, std::vector<GapAnalysis>> getAllGaps(int matrixId);
-
-    // Statistics
-    double getAverageComplianceForMatrix(int matrixId);
-    int getCompetentEmployeeCount(int matrixId); // Count of 100% compliant employees
-    std::map<int, double> getCompetenceAverageLevel(int matrixId);
-
-    // Competence level analysis
-    double getEmployeeAverageLevel(int employeeId);
-    std::map<int, double> getEmployeeCompetenceMap(int employeeId);
 
 private:
     std::shared_ptr<Database::DatabaseManager> db;
