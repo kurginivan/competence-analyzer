@@ -63,8 +63,7 @@ void ConsoleUI::handleMainMenuChoice(int choice) {
     }
 }
 
-// ==================== Управление сотрудниками ====================
-
+// Employee management
 void ConsoleUI::displayEmployeeMenu() {
     clearScreen();
     int choice = -1;
@@ -192,8 +191,7 @@ void ConsoleUI::deleteEmployee() {
     pause();
 }
 
-// ==================== Управление компетенциями ====================
-
+// Competence management
 void ConsoleUI::displayCompetenceMenu() {
     clearScreen();
     int choice = -1;
@@ -281,8 +279,7 @@ void ConsoleUI::deleteCompetence() {
     pause();
 }
 
-// ==================== Управление матрицами ====================
-
+// Matrix management
 void ConsoleUI::displayMatrixMenu() {
     clearScreen();
     int choice = -1;
@@ -487,8 +484,7 @@ void ConsoleUI::deleteMatrix() {
     pause();
 }
 
-// ==================== Управление оценками ====================
-
+// Assessment management
 void ConsoleUI::displayAssessmentMenu() {
     clearScreen();
     int choice = -1;
@@ -586,8 +582,7 @@ void ConsoleUI::deleteAssessment() {
     pause();
 }
 
-// ==================== Анализ и отчеты ====================
-
+// Analysis and reports
 void ConsoleUI::displayAnalysisMenu() {
     clearScreen();
     int choice = -1;
@@ -647,8 +642,7 @@ void ConsoleUI::analyzeEmployeeCompliance() {
     pause();
 }
 
-// ==================== Вспомогательные методы ====================
-
+// Utility methods
 void ConsoleUI::clearScreen() {
     #ifdef _WIN32
         system("cls");

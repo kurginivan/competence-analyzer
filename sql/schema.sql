@@ -1,8 +1,5 @@
--- ============================================================
 -- Database Schema for Competence Matrix Analysis System
--- ============================================================
 
--- Drop existing tables if they exist (in reverse order of dependencies)
 DROP TABLE IF EXISTS assessments CASCADE;
 DROP TABLE IF EXISTS matrix_competencies CASCADE;
 DROP TABLE IF EXISTS employees CASCADE;
@@ -10,7 +7,7 @@ DROP TABLE IF EXISTS positions CASCADE;
 DROP TABLE IF EXISTS competences CASCADE;
 DROP TABLE IF EXISTS matrices CASCADE;
 
--- Create matrices table
+-- Matrices table
 CREATE TABLE matrices (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -19,7 +16,7 @@ CREATE TABLE matrices (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create competences table
+-- Competences table
 CREATE TABLE competences (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -29,8 +26,7 @@ CREATE TABLE competences (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create positions table
--- Positions are linked to matrices (a position corresponds to one matrix)
+-- Positions linked to matrices (1:1 relationship)
 CREATE TABLE positions (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -39,7 +35,7 @@ CREATE TABLE positions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create employees table
+-- Employees
 CREATE TABLE employees (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -50,9 +46,7 @@ CREATE TABLE employees (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create matrix_competencies junction table
--- This table defines which competencies are required for each matrix
--- and what level is required
+-- Matrix-Competence junction table with required levels
 CREATE TABLE matrix_competencies (
     id SERIAL PRIMARY KEY,
     matrix_id INTEGER NOT NULL REFERENCES matrices(id) ON DELETE CASCADE,
@@ -63,7 +57,7 @@ CREATE TABLE matrix_competencies (
     UNIQUE(matrix_id, competence_id)
 );
 
--- Create assessments table
+-- Employee competence assessments
 CREATE TABLE assessments (
     id SERIAL PRIMARY KEY,
     employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -75,7 +69,7 @@ CREATE TABLE assessments (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for better query performance
+-- Performance indexes
 CREATE INDEX idx_employees_department ON employees(department);
 CREATE INDEX idx_employees_position_id ON employees(position_id);
 CREATE INDEX idx_competences_category ON competences(category);
@@ -84,7 +78,6 @@ CREATE INDEX idx_assessments_competence ON assessments(competence_id);
 CREATE INDEX idx_matrix_competencies_matrix ON matrix_competencies(matrix_id);
 CREATE INDEX idx_matrix_competencies_competence ON matrix_competencies(competence_id);
 
--- Add comments to tables
 COMMENT ON TABLE employees IS 'Специалисты/сотрудники организации';
 COMMENT ON TABLE competences IS 'Требуемые компетенции в области информационной безопасности';
 COMMENT ON TABLE matrices IS 'Матрицы компетенций для различных должностей/ролей';

@@ -8,11 +8,7 @@
 
 int main() {
     try {
-        // Строка подключения к базе данных
-        // Формат: "user=username password=password host=hostname port=5432 dbname=database_name"
-        
-        // Проверяем, запущено ли в Docker или локально
-        // В Docker используем имя хоста 'db'. Локально используем 'localhost'
+        // Read environment variables for database connection
         const char* dbHost = std::getenv("DATABASE_HOST");
         const char* dbPort = std::getenv("DATABASE_PORT");
         const char* dbUser = std::getenv("DATABASE_USER");
@@ -34,17 +30,14 @@ int main() {
 
         std::cout << "Подключение к базе данных на " << host << ":" << port << "...\n";
 
-        // Создаем менеджер базы данных
         auto dbManager = std::make_shared<Database::DatabaseManager>(connStr);
 
-        // Подключаемся к базе данных
         if (!dbManager->connect()) {
             std::cerr << "Ошибка подключения к базе данных. Убедитесь, что PostgreSQL запущен.\n";
             std::cerr << "Строка подключения: " << connStr << "\n";
             return 1;
         }
 
-        // Создаем и запускаем консольный интерфейс
         auto ui = std::make_unique<UI::ConsoleUI>(dbManager);
         ui->run();
 

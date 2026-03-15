@@ -112,8 +112,7 @@ const std::string& DatabaseManager::getQuery(const std::string& name) const {
     return it->second;
 }
 
-// ==================== Employee Operations ====================
-
+// Employee operations
 int DatabaseManager::addEmployee(const Models::Employee& employee) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -191,8 +190,7 @@ bool DatabaseManager::deleteEmployee(int id) {
     }
 }
 
-// ==================== Competence Operations ====================
-
+// Competence operations
 int DatabaseManager::addCompetence(const Models::Competence& competence) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -243,8 +241,7 @@ bool DatabaseManager::deleteCompetence(int id) {
     }
 }
 
-// ==================== Matrix Operations ====================
-
+// Matrix operations
 int DatabaseManager::addMatrix(const Models::Matrix& matrix) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -310,8 +307,7 @@ bool DatabaseManager::deleteMatrix(int id) {
     }
 }
 
-// ==================== Matrix-Competence Relations ====================
-
+// Matrix-competence relations
 bool DatabaseManager::addCompetencyToMatrix(int matrixId, int competenceId, int requiredLevel) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -369,8 +365,7 @@ std::vector<std::pair<int, int>> DatabaseManager::getMatrixCompetencies(int matr
     return competencies;
 }
 
-// ==================== Assessment Operations ====================
-
+// Assessment operations
 int DatabaseManager::addAssessment(const Models::Assessment& assessment) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -425,8 +420,7 @@ bool DatabaseManager::deleteAssessment(int id) {
     }
 }
 
-// ==================== Position Operations ====================
-
+// Position operations
 int DatabaseManager::addPosition(const Models::Position& position) {
     if (!isConnected()) throw std::runtime_error("Database not connected");
 
@@ -548,8 +542,7 @@ bool DatabaseManager::deletePosition(int id) {
     }
 }
 
-// ==================== Helper Methods ====================
-
+// Helper methods
 Models::Employee DatabaseManager::parseEmployeeRow(const pqxx::row& row) {
     int positionId = -1;
     if (!row["position_id"].is_null()) {

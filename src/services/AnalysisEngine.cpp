@@ -14,7 +14,7 @@ ComplianceReport AnalysisEngine::analyzeEmployeeCompliance(int employeeId, int m
     report.compliancePercentage = 0.0;
 
     try {
-        // Get matrix competencies
+        // Get matrix competencies and analyze each one
         auto matrixComps = db->getMatrixCompetencies(matrixId);
         report.totalCompetencies = matrixComps.size();
 
@@ -23,7 +23,6 @@ ComplianceReport AnalysisEngine::analyzeEmployeeCompliance(int employeeId, int m
             return report;
         }
 
-        // Analyze each competency
         for (const auto& [competenceId, requiredLevel] : matrixComps) {
             int actualLevel = getEmployeeLevel(employeeId, competenceId);
 
@@ -56,14 +55,14 @@ int AnalysisEngine::getEmployeeLevel(int employeeId, int competenceId) {
     try {
         auto assessments = db->getEmployeeAssessments(employeeId);
         
-        // Find the most recent assessment for this competence
+        // Return most recent assessment for competence
         for (const auto& assessment : assessments) {
             if (assessment.getCompetenceId() == competenceId) {
                 return assessment.getActualLevel();
             }
         }
         
-        return 0; // No assessment found
+        return 0;
     } catch (const std::exception& e) {
         std::cerr << "Ошибка при получении уровня сотрудника: " << e.what() << "\n";
         return 0;
